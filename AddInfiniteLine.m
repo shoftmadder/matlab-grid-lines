@@ -180,6 +180,9 @@ end
 %
 % - The line intersects 2 sides
 %   => Plot the line between the points where it intersects the sides.
+%
+% - The line intersects 4 sides
+%   => Line runs from bottom left to top right, or vice verse
 
 nFound = 0;
 X = zeros(2,1);
@@ -215,6 +218,14 @@ elseif nFound == 0
     % Nothing to plot
     X = [];
     Y = [];
+    return;
+elseif nFound == 4
+    % Only way this can happen is if the line goes through two opposite
+    % corners of the rectangle.
+    % In this case, we can just pick the first 2 valid co-ordinates, since
+    % the first will be at x = x0, and the 2nd will be at x = x1.
+    X = X(1:2);
+    Y = Y(1:2);
     return;
 else
     % Should never reach here...
