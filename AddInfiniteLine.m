@@ -46,7 +46,7 @@ end
 
 
 % If we have an empty varargin (or if it consists only of hAx), 
-% then add a linespec of 'k'.  
+% then add a linespec of 'k'. 
 %
 % Otherwise, assume the caller is taking care of the linespec, and do 
 % nothing.
@@ -75,21 +75,57 @@ hAnnotation = get(hLine,'Annotation');
 hLegendEntry = get(hAnnotation','LegendInformation');
 set(hLegendEntry,'IconDisplayStyle','off')
 
+% and remove it from the children
+set(hLine, 'HandleVisibility', 'off');
+
+% remove it from axis limits calculations
+% technically undocumented, but seems to work
+set(hLine, 'XLimInclude', 'off');
+set(hLine, 'YLimInclude', 'off');
+
 %% Add listeners
-% This defines functions to be called when the axes are re-sized.
-% This resizes the line when the axes are resized
-hXLimProp = findprop(hAx, 'XLim');
-hYLimProp = findprop(hAx, 'YLim');
 
-hXListener = event.proplistener(hAx, hXLimProp, 'PostSet', @(src, evt) UpdateLineLimits(src, evt, hAx, hLine, m, b, c) );
-hYListener = event.proplistener(hAx, hYLimProp, 'PostSet', @(src, evt) UpdateLineLimits(src, evt, hAx, hLine, m, b, c) );
+% There are 4 different listeners defined, to do with re-sizing the line.
+%
+% XLim/YLim PostSet (hAx)
+%   -> Called when the axes limits change
+%
+% XLimMode/YLimMode PostSet (hAx)
+%   -> Called when the limit mode is changed
+%
+% In each case, we update the line to fit the axes limits correctly.
 
-% Store the listener in the UserData of hLine, so that the listener is
-% deleted if and when the line is deleted.
-set(hLine, 'UserData', [hXListener, hYListener]);
+LineLimitFn = @(src, evt) UpdateLineLimits(src, evt, hAx, hLine, m, b, c);
+
+lh  = [ ...
+    addlistener(hAx,   'XLim',     'PostSet', LineLimitFn);    ...
+    addlistener(hAx,   'YLim',     'PostSet', LineLimitFn);    ...
+    addlistener(hAx,   'XLimMode', 'PostSet', LineLimitFn);    ...
+    addlistener(hAx,   'YLimMode', 'PostSet', LineLimitFn);    ...    
+    ];
+
+% A further listener is defined for clean-up
+%   ObjectBeingDestroyed (hLine)
+%   -> Called when the line is deleted (e.g. by the user)
+%   -> Removes the re-sizing listeners defined above.
+RemoveListenersFn = @(src, evt) RemoveListener(src, evt, lh);
+addlistener(hLine, 'ObjectBeingDestroyed', RemoveListenersFn);
+
+% Why do it this way?  A better solution would be to save the handle to the
+% XLim / YLim listeners in the UserData of the line.  Then, when the line
+% is deleted, the UserData is cleared and the listeners deleted
+% automatically.
+%
+% Unfortunately I couldn't seem to get this working with R2013a (despite it
+% working flawlessly in R2014b), due to issues with the event.proplistener
+% constructor.
+%
+% This solution isn't quite as neat, but it works over a wider range of
+% matlabs.
 
 %% Reset the hold status
 % If hold was off to start with, turn it back off now we've finished.
+% (if hold was not off above, then the hold state wasn't changed above)
 if( ~holdstate )
     hold(hAx, 'off');
 end
@@ -109,10 +145,18 @@ function UpdateLineLimits( ~, ~, hAx, hLine, m, b, c)
 %       (y - c) = m (x - b)
 % to only plot the portion of the line which lies within the XLim and YLim 
 % of axes hAx.
-
 	[X,Y] = GetLineLimitsInRectangle(m,b,c,get(hAx, 'XLim'), get(hAx, 'YLim'));
 	set(hLine, 'XData', X);
     set(hLine, 'YData', Y);
+end
+
+function RemoveListener(~, ~, lh)
+    delete(lh);
+end
+
+function HideLine(~, ~, hLine)
+    set(hLine, 'XData', []);
+    set(hLine, 'YData', []);
 end
 
 function [X, Y] = GetLineLimitsInRectangle( m, b, c, Xs, Ys )
@@ -223,7 +267,7 @@ elseif nFound == 4
     % Only way this can happen is if the line goes through two opposite
     % corners of the rectangle.
     % In this case, we can just pick the first 2 valid co-ordinates, since
-    % the first will be at x = x0, and the 2nd will be at x = x1.
+    % the first will be at x = x0, and the 2nd will be at x=x1.
     X = X(1:2);
     Y = Y(1:2);
     return;
